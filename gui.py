@@ -531,12 +531,17 @@ class LauncherWindow(tk.Tk):
             return
         try:
             game = launcher.find_game(self.selected_id)
-            if game.confidence in {"MEDIUM", "LOW"} or game.verification.startswith("UNVERIFIED"):
-                messagebox.showwarning(
-                    "Jeu non vérifié",
-                    "Cette découverte doit être vérifiée et sa configuration confirmée avant le lancement.",
-                )
+            uncertain = game.confidence in {"MEDIUM", "LOW"} or game.verification.startswith("UNVERIFIED")
+            if uncertain and not messagebox.askyesno(
+                "Jeu non vérifié",
+                f"{game.name} provient d'une découverte non vérifiée.\n\n"
+                "Le chemin sera contrôlé puis le jeu sera lancé. Continuer ?",
+            ):
                 return
+            if uncertain:
+                game.verification = "USER_CONFIRMED"
+                game.status = "ready"
+                launcher.save_game(game)
             prepared = launcher.prepare_launch(game)
         except (KeyError, ValueError, OSError, RuntimeError) as error:
             messagebox.showerror("Lancement impossible", str(error))

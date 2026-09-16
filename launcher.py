@@ -709,6 +709,8 @@ def prepare_launch(game: Game) -> PreparedLaunch:
     environment.update(game.environment)
     arguments = list(game.arguments)
     if backend == "native":
+        if not os.access(executable, os.X_OK):
+            raise PermissionError(f"Exécutable non autorisé à l'exécution: {executable}")
         command = str(executable)
     elif backend in {"wine", "proton"}:
         runtime = find_runtime(game.runtime, backend)
@@ -841,8 +843,13 @@ def launch_game(args: argparse.Namespace) -> int:
     game = find_game(args.game_id)
     if not game.enabled:
         raise RuntimeError(f"Jeu désactivé: {game.name}")
-    if game.confidence in {"MEDIUM", "LOW"} or game.verification.startswith("UNVERIFIED"):
+    uncertain = game.confidence in {"MEDIUM", "LOW"} or game.verification.startswith("UNVERIFIED")
+    if uncertain and not args.allow_unverified:
         raise RuntimeError(f"Jeu non vérifié: {game.name}; confirmez sa configuration avant de le lancer")
+    if uncertain and args.allow_unverified:
+        game.verification = "USER_CONFIRMED"
+        game.status = "ready"
+        save_game(game)
     prepared = prepare_launch(game)
     print(f"Lancement: {json.dumps(prepared.argv, ensure_ascii=False)}")
     if args.dry_run:
@@ -853,6 +860,8 @@ def launch_game(args: argparse.Namespace) -> int:
                                 check=False, timeout=args.timeout)
     except subprocess.TimeoutExpired as error:
         raise RuntimeError(f"Lancement interrompu après {args.timeout} seconde(s)") from error
+    except OSError as error:
+        raise RuntimeError(f"Impossible de démarrer le processus: {error}") from error
     game.last_launched_at = dt.datetime.now().astimezone().isoformat()
     game.launch_count += 1
     save_game(game)
@@ -975,6 +984,7 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("game_id")
     launch.add_argument("--dry-run", action="store_true", help="Affiche la commande sans la lancer")
     launch.add_argument("--timeout", type=float, help="Arrête le processus après N secondes")
+    launch.add_argument("--allow-unverified", action="store_true", help="Autorise le lancement après vérification manuelle")
     launch.set_defaults(function=launch_game)
     check = commands.add_parser("diagnose", help="Diagnostique un jeu")
     check.add_argument("game_id")

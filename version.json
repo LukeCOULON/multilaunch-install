@@ -1,8 +1,8 @@
 {
   "name": "MultiLaunch",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "author": "Luke Coulon",
   "repository": "https://github.com/LukeCOULON/multilaunch",
   "branch": "main",
-  "release_notes": "Premiere version du launcher Linux Wine/Proton."
+  "release_notes": "Amelioration du lancement des jeux et support de l'installation Linux/Windows."
 }

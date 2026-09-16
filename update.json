@@ -1,13 +1,7 @@
 {
-  "version": "0.0.5",
+  "version": "0.0.6",
   "title": "Nouveautés de MultiLaunch",
   "items": [
-    "Interface graphique responsive avec bibliothèque de jeux.",
-    "Détection des jeux via Steam, Lutris, Heroic, Bottles et Wine.",
-    "Recherche approfondie dans les bibliothèques explicitement sélectionnées.",
-    "Import des découvertes fiables et des installations à vérifier.",
-    "Gestion des prefixes Wine, arguments et variables d'environnement.",
-    "Logs de lancement, diagnostics et mise à jour depuis GitHub.",
-    "Installation dans le dossier personnel avec raccourci du menu des applications."
+    "Amelioration du lancement des jeux et support de l'installation Linux/Windows."
   ]
 }
