@@ -1,6 +1,3 @@
-
-#!/usr/bin/env python3
-
 import os
 import re
 import json
@@ -63,6 +60,9 @@ DEFAULT_OUTPUT = Path("games_detected.json")
 USER_LIBRARY_DIRS = [
     HOME / "Games",
     HOME / "games",
+    HOME / "Documents" / "My Games",
+    HOME / "Desktop",
+    HOME / "Downloads",
 ]
 
 MAX_MANUAL_SCAN_DEPTH = 3
@@ -593,7 +593,6 @@ def find_steam_roots():
         / ".steam"
         / "steam",
     ]
-
     roots = []
 
     for path in candidates:
@@ -640,7 +639,7 @@ def parse_steam_libraryfolders(
 
     for value in matches:
 
-        path = Path(value)
+        path = Path(value).expanduser()
 
         if (
             path.exists()
@@ -1067,7 +1066,6 @@ def find_lutris_databases():
         / "lutris"
         / "pga.db",
     ]
-
     return [
         path
         for path in paths
@@ -1232,8 +1230,7 @@ def scan_lutris(results):
 # ============================================================
 
 def find_heroic_configs():
-
-    return [
+    configs = [
 
         HOME
         / ".config"
@@ -1246,6 +1243,7 @@ def find_heroic_configs():
         / "config"
         / "heroic",
     ]
+    return configs
 
 
 def scan_heroic(results):

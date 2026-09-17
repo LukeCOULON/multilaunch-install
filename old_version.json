@@ -1,0 +1,14 @@
+{
+  "name": "MultiLaunch",
+  "current_version": "0.0.8",
+  "history": [
+    {
+      "version": "0.0.7",
+      "notes": "Passage a une application Linux uniquement. Les jeux Windows restent lancables via Wine ou Proton."
+    },
+    {
+      "version": "0.0.8",
+      "notes": "Ajout de la gestion des donnees, des sauvegardes JSON, du theme et de l'acces aux logs."
+    }
+  ]
+}

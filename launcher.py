@@ -28,13 +28,16 @@ import gamedetector
 DEFAULT_APP_DIR = Path.home() / "Documents" / "MultiLaunch"
 APP_DIR = Path(os.environ.get("MULTILAUNCH_HOME", DEFAULT_APP_DIR))
 GAMES_FILE = APP_DIR / "data.json"
+DATA_BACKUP_DIR = Path.home() / "Documents" / "MultiLaunch" / "backups"
 UPDATE_STATE_FILE = APP_DIR / "update-state.json"
+SETTINGS_FILE = APP_DIR / "settings.json"
 LOG_DIR = APP_DIR / "logs"
 APP_NAME = "MultiLaunch"
 APP_AUTHOR = "Luke Coulon"
 PROJECT_ROOT = Path(__file__).resolve().parent
 VERSION_FILE = PROJECT_ROOT / "version.json"
 UPDATE_FILE = PROJECT_ROOT / "update.json"
+OLD_VERSION_FILE = PROJECT_ROOT / "old_version.json"
 GITHUB_REPOSITORY = "LukeCOULON/multilaunch"
 IGNORED_EXECUTABLE_NAMES = {
     "setup", "install", "installer", "unins000", "uninstall", "uninstaller",
@@ -215,7 +218,11 @@ def install_update(remote: dict[str, Any], timeout: float = 30.0) -> Path:
     archive_url = f"https://github.com/{GITHUB_REPOSITORY}/archive/refs/heads/{branch}.zip"
     backup_dir = APP_DIR / "updates" / dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_dir.mkdir(parents=True, exist_ok=True)
-    update_files = {"launcher.py", "gui.py", "gamedetector.py", "version.json", "update.json", "test_launcher.py"}
+    if GAMES_FILE.is_file():
+        DATA_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        data_backup = DATA_BACKUP_DIR / f"data-{dt.datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.json"
+        shutil.copy2(GAMES_FILE, data_backup)
+    update_files = {"app_entry.py", "launcher.py", "gui.py", "gamedetector.py", "version.json", "update.json", "old_version.json", "test_launcher.py"}
     with tempfile.TemporaryDirectory(prefix="multilaunch-update-") as temporary:
         archive_path = Path(temporary) / "update.zip"
         request = urllib.request.Request(archive_url, headers={"User-Agent": "MultiLaunch-Updater"})
@@ -256,6 +263,7 @@ class DetectedCandidate:
     appid: str | None = None
     reason: str | None = None
     indicators: list[str] = field(default_factory=list)
+    backend: str = "auto"
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -289,6 +297,31 @@ def save_games(games: list[Game]) -> None:
     temporary_file.replace(GAMES_FILE)
 
 
+def backup_data() -> Path:
+    if not GAMES_FILE.is_file():
+        ensure_storage()
+    backup_dir = DATA_BACKUP_DIR
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_path = backup_dir / f"data-{dt.datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.json"
+    shutil.copy2(GAMES_FILE, backup_path)
+    return backup_path
+
+
+def load_settings() -> dict[str, Any]:
+    if not SETTINGS_FILE.exists():
+        return {"theme": "dark"}
+    try:
+        data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"theme": "dark"}
+    return data if isinstance(data, dict) else {"theme": "dark"}
+
+
+def save_settings(settings: dict[str, Any]) -> None:
+    ensure_storage()
+    SETTINGS_FILE.write_text(json.dumps(settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def detect_platform(path: Path) -> str:
     with path.open("rb") as executable_file:
         header = executable_file.read(4)
@@ -297,6 +330,34 @@ def detect_platform(path: Path) -> str:
     if header[:2] == b"MZ":
         return "windows"
     raise ValueError(f"Format d'exécutable inconnu: {path}")
+
+
+def find_install_executables(install_path: str | Path, max_depth: int = 4) -> list[Path]:
+    """List PE executables in one known installation, without scanning outside it."""
+    root = Path(install_path).expanduser().resolve()
+    if not root.is_dir() or root.is_symlink():
+        return []
+    results: list[Path] = []
+    base_depth = len(root.parts)
+    for current, directories, files in os.walk(root, followlinks=False):
+        current_path = Path(current)
+        if len(current_path.parts) - base_depth >= max_depth:
+            directories.clear()
+        directories[:] = [
+            directory for directory in directories
+            if directory.casefold() not in IGNORED_DIRECTORIES
+            and not (current_path / directory).is_symlink()
+        ]
+        for filename in files:
+            path = current_path / filename
+            if path.suffix.casefold() != ".exe" or path.is_symlink():
+                continue
+            try:
+                if detect_platform(path) == "windows":
+                    results.append(path.resolve())
+            except (OSError, ValueError):
+                continue
+    return sorted(set(results), key=lambda path: (len(path.parts), path.name.casefold(), str(path)))
 
 
 def default_scan_roots() -> list[Path]:
@@ -581,6 +642,7 @@ def _adapt_detector_candidate(candidate: gamedetector.GameCandidate) -> Detected
         appid=candidate.appid,
         reason=candidate.reason,
         indicators=list(candidate.indicators),
+        backend="auto",
     )
 
 
@@ -642,6 +704,7 @@ def import_candidate(candidate: DetectedCandidate) -> Game:
         launcher_id=candidate.launcher_id,
         detected_at=candidate.detected_at,
         verification=candidate.verification,
+        backend=candidate.backend,
     )
     games = load_games()
     games.append(game)
@@ -650,20 +713,50 @@ def import_candidate(candidate: DetectedCandidate) -> Game:
 
 
 def find_runtime(runtime: str | None, backend: str) -> str | None:
-    candidates = [runtime] if runtime else (["wine"] if backend == "wine" else ["proton", "wine"])
+    if backend == "proton" and runtime in {"proton", "auto"}:
+        runtime = None
+    candidates = [runtime] if runtime else (["wine"] if backend == "wine" else ["proton"])
     if backend == "native":
         return None
     for candidate in candidates:
         if candidate:
+            candidate_path = Path(candidate).expanduser()
+            if candidate_path.is_file() and os.access(candidate_path, os.X_OK):
+                return str(candidate_path.resolve())
             resolved = shutil.which(candidate)
             if resolved:
                 return resolved
+    if backend == "proton":
+        configured_runtime = os.environ.get("MULTILAUNCH_PROTON")
+        if configured_runtime:
+            configured_path = Path(configured_runtime).expanduser()
+            if configured_path.is_file() and os.access(configured_path, os.X_OK):
+                return str(configured_path.resolve())
+        proton_roots = [
+            Path.home() / ".local/share/Steam/steamapps/common",
+            Path.home() / ".steam/steam/steamapps/common",
+            Path.home() / ".steam/root/steamapps/common",
+            Path.home() / ".local/share/Steam/compatibilitytools.d",
+            Path.home() / ".steam/root/compatibilitytools.d",
+        ]
+        for root in proton_roots:
+            if not root.is_dir():
+                continue
+            if runtime:
+                matches = [root / runtime / "proton", root / runtime / "proton".lower()]
+            else:
+                matches = list(root.glob("*/proton"))
+            for match in matches:
+                if match.is_file() and os.access(match, os.X_OK):
+                    return str(match.resolve())
     return None
 
 
 def resolve_backend(game: Game) -> str:
     if game.backend != "auto":
         return game.backend
+    if game.platform == "windows" and (game.source == "Steam" or (game.launcher_id or "").startswith("steam:")):
+        return "proton"
     return "native" if game.platform == "linux" else "wine"
 
 
@@ -719,10 +812,37 @@ def prepare_launch(game: Game) -> PreparedLaunch:
         command = runtime
         if game.prefix:
             prefix = Path(game.prefix).expanduser().resolve()
+        elif backend == "proton":
+            prefix = APP_DIR / "prefixes" / game.id / "compatdata" / "pfx"
+        else:
+            prefix = None
+        if prefix:
             prefix.mkdir(parents=True, exist_ok=True)
             environment["WINEPREFIX"] = str(prefix)
             if backend == "proton":
                 environment["STEAM_COMPAT_DATA_PATH"] = str(prefix.parent)
+        if backend == "proton":
+            app_id = (game.launcher_id or "").removeprefix("steam:")
+            if app_id.isdigit():
+                steam_compatdata = Path.home() / ".local/share/Steam/steamapps/compatdata" / app_id
+                if game.prefix is None:
+                    prefix = steam_compatdata / "pfx"
+                    prefix.mkdir(parents=True, exist_ok=True)
+                    environment["WINEPREFIX"] = str(prefix)
+                if prefix is None:
+                    raise RuntimeError("Prefix Proton indisponible")
+                environment["STEAM_COMPAT_DATA_PATH"] = str(prefix.parent)
+                environment["STEAM_COMPAT_APP_ID"] = app_id
+                environment["SteamAppId"] = app_id
+                environment["SteamGameId"] = app_id
+            steam_root = next((candidate for candidate in (
+                Path.home() / ".local/share/Steam",
+                Path.home() / ".steam/steam",
+                Path.home() / ".steam/root",
+            ) if candidate.is_dir()), None)
+            if steam_root:
+                environment.setdefault("STEAM_COMPAT_CLIENT_INSTALL_PATH", str(steam_root))
+            environment.setdefault("STEAM_COMPAT_INSTALL_PATH", str(Path(runtime).parent))
         arguments = (["run"] if backend == "proton" else []) + [str(executable), *arguments]
     else:
         raise ValueError(f"Backend inconnu: {backend}")

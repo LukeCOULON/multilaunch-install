@@ -1,8 +1,11 @@
 {
   "name": "MultiLaunch",
-  "version": "0.0.6",
+  "version": "0.0.9",
   "author": "Luke Coulon",
   "repository": "https://github.com/LukeCOULON/multilaunch",
   "branch": "main",
-  "release_notes": "Amelioration du lancement des jeux et support de l'installation Linux/Windows."
+  "platform": "linux",
+  "supported_os": ["Linux"],
+  "windows_support": false,
+  "release_notes": "MultiLaunch est désormais dédié à Linux; les jeux Windows continuent d'être lancés via Wine ou Proton."
 }

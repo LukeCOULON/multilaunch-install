@@ -1,7 +1,16 @@
 {
-  "version": "0.0.6",
+  "version": "0.0.9",
   "title": "Nouveautés de MultiLaunch",
   "items": [
-    "Amelioration du lancement des jeux et support de l'installation Linux/Windows."
-  ]
+    "Version Linux uniquement : l'installation et l'interface Windows sont retirées.",
+    "Les jeux Windows restent pris en charge sous Linux via Wine ou Proton.",
+    "Lancement Proton Steam avec AppID, compatdata et prefix dédiés.",
+    "Détection automatique de Wine et Proton installés par Steam.",
+    "Fenêtre de réparation pour sélectionner un nouvel exécutable introuvable.",
+    "Sauvegarde JSON brute des données avant installation ou mise à jour."
+  ],
+  "platform": "linux",
+  "supported_os": ["Linux"],
+  "windows_support": false,
+  "migration": "Les anciennes installations Windows ne sont pas mises à jour; utilisez une installation Linux."
 }

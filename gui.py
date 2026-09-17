@@ -9,6 +9,7 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
+from typing import Any
 
 import launcher
 
@@ -38,6 +39,7 @@ class LauncherWindow(tk.Tk):
         self.scan_window: tk.Toplevel | None = None
         self.scan_cancelled = False
         self._resize_pending = False
+        self.theme_mode = str(launcher.load_settings().get("theme", "dark"))
         self._configure_style()
         self._build_ui()
         self.bind("<Configure>", self._on_resize)
@@ -45,28 +47,35 @@ class LauncherWindow(tk.Tk):
         self.after(350, self.show_release_notes)
 
     def _configure_style(self) -> None:
-        self.configure(bg=BG_COLOR)
+        light = self.theme_mode == "light"
+        bg_color = "#eef2f7" if light else BG_COLOR
+        panel_color = "#ffffff" if light else PANEL_COLOR
+        field_color = "#e3eaf2" if light else FIELD_COLOR
+        text_color = "#182230" if light else TEXT_COLOR
+        muted_color = "#52657a" if light else MUTED_COLOR
+        accent_color = "#0284c7" if light else ACCENT_COLOR
+        self.configure(bg=bg_color)
         style = ttk.Style(self)
         style.theme_use("clam")
-        style.configure("App.TFrame", background=BG_COLOR)
-        style.configure("Panel.TFrame", background=PANEL_COLOR)
-        style.configure("Brand.TLabel", background=BG_COLOR, foreground=TEXT_COLOR, font=("DejaVu Sans", 24, "bold"))
-        style.configure("Subtitle.TLabel", background=BG_COLOR, foreground=ACCENT_COLOR, font=("DejaVu Sans", 10))
-        style.configure("Title.TLabel", background=BG_COLOR, foreground=TEXT_COLOR, font=("DejaVu Sans", 22, "bold"))
-        style.configure("SelectedTitle.TLabel", background=PANEL_COLOR, foreground=ACCENT_COLOR, font=("DejaVu Sans", 22, "bold"))
-        style.configure("Muted.TLabel", background=BG_COLOR, foreground=MUTED_COLOR, font=("DejaVu Sans", 10))
-        style.configure("Panel.TLabel", background=PANEL_COLOR, foreground=TEXT_COLOR, font=("DejaVu Sans", 10))
-        style.configure("Field.TLabel", background=PANEL_COLOR, foreground=MUTED_COLOR, font=("DejaVu Sans", 9))
-        style.configure("Accent.TButton", background=ACCENT_COLOR, foreground="#07111f", padding=(14, 8), borderwidth=0, font=("DejaVu Sans", 9, "bold"))
+        style.configure("App.TFrame", background=bg_color)
+        style.configure("Panel.TFrame", background=panel_color)
+        style.configure("Brand.TLabel", background=bg_color, foreground=text_color, font=("DejaVu Sans", 24, "bold"))
+        style.configure("Subtitle.TLabel", background=bg_color, foreground=accent_color, font=("DejaVu Sans", 10))
+        style.configure("Title.TLabel", background=bg_color, foreground=text_color, font=("DejaVu Sans", 22, "bold"))
+        style.configure("SelectedTitle.TLabel", background=panel_color, foreground=accent_color, font=("DejaVu Sans", 22, "bold"))
+        style.configure("Muted.TLabel", background=bg_color, foreground=muted_color, font=("DejaVu Sans", 10))
+        style.configure("Panel.TLabel", background=panel_color, foreground=text_color, font=("DejaVu Sans", 10))
+        style.configure("Field.TLabel", background=panel_color, foreground=muted_color, font=("DejaVu Sans", 9))
+        style.configure("Accent.TButton", background=accent_color, foreground="#07111f", padding=(14, 8), borderwidth=0, font=("DejaVu Sans", 9, "bold"))
         style.map("Accent.TButton", background=[("active", "#7dd3fc")])
         style.configure("Danger.TButton", background="#3a2029", foreground="#fda4af", padding=(10, 7), borderwidth=0)
         style.map("Danger.TButton", background=[("active", "#542532")])
-        style.configure("TButton", padding=(10, 7), background="#243247", foreground=TEXT_COLOR, borderwidth=0)
+        style.configure("TButton", padding=(10, 7), background="#d3dce7" if light else "#243247", foreground=text_color, borderwidth=0)
         style.map("TButton", background=[("active", "#33445d")])
-        style.configure("TEntry", fieldbackground=FIELD_COLOR, foreground=TEXT_COLOR, insertcolor="white", borderwidth=0, padding=8)
-        style.configure("TCombobox", fieldbackground=FIELD_COLOR, foreground=TEXT_COLOR, padding=7)
-        style.configure("Treeview", background=PANEL_COLOR, fieldbackground=PANEL_COLOR, foreground=TEXT_COLOR, rowheight=42, borderwidth=0, font=("DejaVu Sans", 10))
-        style.configure("Treeview.Heading", background=FIELD_COLOR, foreground=MUTED_COLOR, relief="flat", padding=10, font=("DejaVu Sans", 9, "bold"))
+        style.configure("TEntry", fieldbackground=field_color, foreground=text_color, insertcolor=text_color, borderwidth=0, padding=8)
+        style.configure("TCombobox", fieldbackground=field_color, foreground=text_color, padding=7)
+        style.configure("Treeview", background=panel_color, fieldbackground=panel_color, foreground=text_color, rowheight=42, borderwidth=0, font=("DejaVu Sans", 10))
+        style.configure("Treeview.Heading", background=field_color, foreground=muted_color, relief="flat", padding=10, font=("DejaVu Sans", 9, "bold"))
         style.map("Treeview", background=[("selected", "#164e63")], foreground=[("selected", "white")])
 
     def _build_ui(self) -> None:
@@ -87,6 +96,7 @@ class LauncherWindow(tk.Tk):
         ttk.Button(toolbar, text="Détecter", command=self.detect_games).pack(side="left", padx=(8, 0))
         ttk.Button(toolbar, text="Chercher dans un dossier", command=self.search_folder).pack(side="left", padx=(8, 0))
         ttk.Button(toolbar, text="Mises à jour", command=self.check_updates).pack(side="right")
+        ttk.Button(toolbar, text="Paramètres", command=self.show_settings).pack(side="right", padx=(0, 8))
         ttk.Button(toolbar, text="Vider la liste", command=self.clear_games).pack(side="right", padx=(0, 8))
         ttk.Separator(root, orient="horizontal").pack(fill="x", pady=(0, 18))
 
@@ -230,7 +240,82 @@ class LauncherWindow(tk.Tk):
             self.tree.insert("", "end", iid=game.id, values=(game.name, game.platform, launcher.resolve_backend(game), state), tags=("game", state_tag))
         enabled = sum(game.enabled for game in self.games)
         wine_games = sum(launcher.resolve_backend(game) in {"wine", "proton"} for game in self.games)
-        self.stats_var.set(f"{len(self.games)} jeu(x) · {enabled} actif(s) · {wine_games} Windows")
+        self.stats_var.set(f"{len(self.games)} jeu(x) · {enabled} actif(s) · {wine_games} jeux Wine/Proton")
+
+    def show_settings(self) -> None:
+        window = tk.Toplevel(self)
+        window.title("Paramètres — MultiLaunch")
+        window.geometry("700x560")
+        window.minsize(620, 460)
+        window.configure(bg=BG_COLOR)
+        ttk.Label(window, text="Paramètres", style="Title.TLabel").pack(anchor="w", padx=24, pady=(22, 2))
+        ttk.Label(window, text="Données, apparence et diagnostics", style="Subtitle.TLabel").pack(anchor="w", padx=24, pady=(0, 18))
+        body = ttk.Frame(window, style="Panel.TFrame", padding=18)
+        body.pack(fill="both", expand=True, padx=24, pady=(0, 18))
+
+        ttk.Label(body, text="DONNÉES", style="Field.TLabel").pack(anchor="w")
+        ttk.Label(body, text=f"Catalogue : {launcher.GAMES_FILE}", style="Panel.TLabel").pack(anchor="w", pady=(5, 2))
+        ttk.Label(body, text=f"Sauvegardes : {launcher.DATA_BACKUP_DIR}", style="Panel.TLabel").pack(anchor="w")
+        data_buttons = ttk.Frame(body, style="Panel.TFrame")
+        data_buttons.pack(fill="x", pady=(10, 18))
+        ttk.Button(data_buttons, text="Créer une sauvegarde JSON", command=lambda: self.create_data_backup(window)).pack(side="left")
+        ttk.Button(data_buttons, text="Ouvrir le dossier des données", command=lambda: self.open_path(launcher.DATA_BACKUP_DIR.parent)).pack(side="left", padx=8)
+
+        ttk.Label(body, text="APPARENCE", style="Field.TLabel").pack(anchor="w")
+        theme_row = ttk.Frame(body, style="Panel.TFrame")
+        theme_row.pack(fill="x", pady=(5, 18))
+        ttk.Label(theme_row, text="Thème", style="Panel.TLabel", width=18).pack(side="left")
+        theme_var = tk.StringVar(value=self.theme_mode)
+        theme_combo = ttk.Combobox(theme_row, textvariable=theme_var, values=("dark", "light"), state="readonly", width=18)
+        theme_combo.pack(side="left")
+        ttk.Button(theme_row, text="Appliquer", command=lambda: self.apply_theme(theme_var.get(), window)).pack(side="left", padx=8)
+
+        ttk.Label(body, text="LOGS ET HISTORIQUE", style="Field.TLabel").pack(anchor="w")
+        log_buttons = ttk.Frame(body, style="Panel.TFrame")
+        log_buttons.pack(fill="x", pady=(5, 10))
+        ttk.Button(log_buttons, text="Ouvrir les logs", command=lambda: self.open_path(launcher.LOG_DIR)).pack(side="left")
+        ttk.Button(log_buttons, text="Voir old_version.json", command=lambda: self.show_old_versions(window)).pack(side="left", padx=8)
+        ttk.Label(body, text="Les logs de lancement restent séparés par jeu. L’historique des versions est conservé dans old_version.json.", style="Muted.TLabel", wraplength=600).pack(anchor="w")
+
+    def create_data_backup(self, parent: tk.Toplevel) -> None:
+        try:
+            backup = launcher.backup_data()
+            messagebox.showinfo("Sauvegarde créée", f"Copie brute créée :\n{backup}", parent=parent)
+        except OSError as error:
+            messagebox.showerror("Sauvegarde impossible", str(error), parent=parent)
+
+    def open_path(self, path: Path) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+        try:
+            subprocess.Popen(["xdg-open", str(path)])
+        except OSError as error:
+            messagebox.showerror("Ouverture impossible", str(error), parent=self)
+
+    def apply_theme(self, theme: str, parent: tk.Toplevel) -> None:
+        self.theme_mode = theme if theme in {"dark", "light"} else "dark"
+        launcher.save_settings({**launcher.load_settings(), "theme": self.theme_mode})
+        self._configure_style()
+        field_color = "#eef2f7" if self.theme_mode == "light" else FIELD_COLOR
+        text_color = "#182230" if self.theme_mode == "light" else TEXT_COLOR
+        for widget in (self.arguments_text, self.environment_text):
+            widget.configure(bg=field_color, fg=text_color)
+        self.status_var.set(f"Thème appliqué : {self.theme_mode}")
+        parent.destroy()
+
+    def show_old_versions(self, parent: tk.Toplevel) -> None:
+        try:
+            history = json.loads((launcher.PROJECT_ROOT / "old_version.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            messagebox.showerror("Historique indisponible", str(error), parent=parent)
+            return
+        dialog = tk.Toplevel(parent)
+        dialog.title("Historique des versions")
+        dialog.geometry("560x360")
+        text = tk.Text(dialog, bg=FIELD_COLOR, fg=TEXT_COLOR, relief="flat", wrap="word", padx=14, pady=14)
+        text.pack(fill="both", expand=True, padx=18, pady=18)
+        for item in history.get("history", []):
+            text.insert("end", f"Version {item.get('version', '?')}\n{item.get('notes', '')}\n\n")
+        text.configure(state="disabled")
 
     def show_release_notes(self) -> None:
         try:
@@ -255,7 +340,7 @@ class LauncherWindow(tk.Tk):
             self.after(0, lambda: messagebox.showwarning("Mise à jour", str(error)))
             self.after(0, lambda: self.status_var.set("Vérification GitHub indisponible"))
 
-    def _show_update_result(self, result: dict[str, object]) -> None:
+    def _show_update_result(self, result: dict[str, Any]) -> None:
         current = result["current"]["version"]
         remote = result["remote"]["version"]
         if not result["update_available"]:
@@ -271,7 +356,7 @@ class LauncherWindow(tk.Tk):
             self.status_var.set(f"Installation de la version {remote}...")
             threading.Thread(target=self._install_update_worker, args=(remote_data,), daemon=True).start()
 
-    def _install_update_worker(self, remote: dict[str, object]) -> None:
+    def _install_update_worker(self, remote: dict[str, Any]) -> None:
         try:
             backup = launcher.install_update(remote)
             self.after(0, lambda: self.status_var.set(f"Mise à jour installée · sauvegarde : {backup.name}"))
@@ -458,13 +543,82 @@ class LauncherWindow(tk.Tk):
     def import_detected(self, window: tk.Toplevel, listbox: tk.Listbox, candidates: list[launcher.DetectedCandidate]) -> None:
         imported = 0
         for index in listbox.curselection():
+            candidate = candidates[index]
             try:
-                launcher.import_candidate(candidates[index])
+                if self.requires_manual_executable(candidate):
+                    if not self.choose_candidate_executable(candidate):
+                        continue
+                launcher.import_candidate(candidate)
                 imported += 1
-            except ValueError:
-                pass
+            except ValueError as error:
+                if "déjà présent" not in str(error):
+                    messagebox.showwarning("Import ignoré", f"{candidate.name}: {error}", parent=window)
+            except (OSError, RuntimeError) as error:
+                messagebox.showwarning("Import ignoré", f"{candidate.name}: {error}", parent=window)
         window.destroy()
         self.status_var.set(f"{imported} jeu(x) importé(s)")
+
+    @staticmethod
+    def requires_manual_executable(candidate: launcher.DetectedCandidate) -> bool:
+        official_sources = {"Steam", "Lutris", "Heroic"}
+        return (
+            candidate.source not in official_sources
+            or candidate.confidence in {"MEDIUM", "LOW"}
+            or candidate.verification.startswith("UNVERIFIED")
+            or bool(candidate.indicators)
+        )
+
+    def choose_candidate_executable(self, candidate: launcher.DetectedCandidate) -> bool:
+        install_path = candidate.install_path or str(Path(candidate.executable).parent)
+        executables = launcher.find_install_executables(install_path)
+        if not executables:
+            messagebox.showwarning("Aucun exécutable", f"Aucun .exe n'a été trouvé dans :\n{install_path}")
+            return False
+
+        dialog = tk.Toplevel(self)
+        dialog.title(f"Choisir l’exécutable — {candidate.name}")
+        dialog.geometry("820x460")
+        dialog.configure(bg=BG_COLOR)
+        ttk.Label(dialog, text="Choisis le véritable exécutable du jeu", style="Title.TLabel").pack(anchor="w", padx=22, pady=(20, 4))
+        ttk.Label(dialog, text=f"Installation : {install_path}\nCette sélection est obligatoire pour une découverte non officielle.", style="Muted.TLabel").pack(anchor="w", padx=22, pady=(0, 12))
+        frame = ttk.Frame(dialog, style="Panel.TFrame", padding=10)
+        frame.pack(fill="both", expand=True, padx=22)
+        listbox = tk.Listbox(frame, selectmode="browse", bg=FIELD_COLOR, fg=TEXT_COLOR, selectbackground="#164e63", relief="flat", highlightthickness=0)
+        listbox.pack(side="left", fill="both", expand=True)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=listbox.yview)
+        scrollbar.pack(side="right", fill="y")
+        listbox.configure(yscrollcommand=scrollbar.set)
+        for executable in executables:
+            listbox.insert("end", str(executable))
+        listbox.selection_set(0)
+        backend_var = tk.StringVar(value="proton" if candidate.source == "Steam Common" else "wine")
+        runtime_row = ttk.Frame(dialog, style="App.TFrame")
+        runtime_row.pack(fill="x", padx=22, pady=12)
+        ttk.Label(runtime_row, text="Runtime", style="Field.TLabel", width=14).pack(side="left")
+        ttk.Combobox(runtime_row, textvariable=backend_var, values=("auto", "proton", "wine", "native"), state="readonly", width=18).pack(side="left")
+        result = {"selected": False}
+
+        def confirm() -> None:
+            selected = listbox.curselection()
+            if not selected:
+                messagebox.showwarning("Sélection obligatoire", "Sélectionne le .exe principal du jeu.", parent=dialog)
+                return
+            candidate.executable = str(executables[selected[0]])
+            candidate.install_path = install_path
+            candidate.discovery_method = f"{candidate.discovery_method}; executable sélectionné par l'utilisateur"
+            candidate.evidence.append(".exe confirmé manuellement")
+            candidate.confidence = "HIGH" if candidate.confidence in {"LOW", "MEDIUM"} else candidate.confidence
+            candidate.verification = "USER_CONFIRMED"
+            candidate.backend = backend_var.get()
+            result["selected"] = True
+            dialog.destroy()
+
+        buttons = ttk.Frame(dialog, style="App.TFrame")
+        buttons.pack(fill="x", padx=22, pady=(0, 18))
+        ttk.Button(buttons, text="Passer", command=dialog.destroy).pack(side="right")
+        ttk.Button(buttons, text="Confirmer et importer", style="Accent.TButton", command=confirm).pack(side="right", padx=8)
+        self.wait_window(dialog)
+        return result["selected"]
 
     def add_game(self) -> None:
         path = filedialog.askopenfilename(title="Choisir l'exécutable du jeu")
@@ -531,6 +685,10 @@ class LauncherWindow(tk.Tk):
             return
         try:
             game = launcher.find_game(self.selected_id)
+            if not Path(game.executable).expanduser().is_file():
+                if not self.repair_game(game):
+                    return
+                game = launcher.find_game(self.selected_id)
             uncertain = game.confidence in {"MEDIUM", "LOW"} or game.verification.startswith("UNVERIFIED")
             if uncertain and not messagebox.askyesno(
                 "Jeu non vérifié",
@@ -542,12 +700,89 @@ class LauncherWindow(tk.Tk):
                 game.verification = "USER_CONFIRMED"
                 game.status = "ready"
                 launcher.save_game(game)
-            prepared = launcher.prepare_launch(game)
+            try:
+                prepared = launcher.prepare_launch(game)
+            except FileNotFoundError:
+                if not self.repair_game(game):
+                    return
+                game = launcher.find_game(self.selected_id)
+                prepared = launcher.prepare_launch(game)
         except (KeyError, ValueError, OSError, RuntimeError) as error:
             messagebox.showerror("Lancement impossible", str(error))
             return
         self.status_var.set(f"Lancement de {game.name}...")
         threading.Thread(target=self._run_process, args=(game, prepared), daemon=True).start()
+
+    def repair_game(self, game: launcher.Game) -> bool:
+        """Ask for a replacement executable and runtime when the old path vanished."""
+        window = tk.Toplevel(self)
+        window.title(f"Réparer {game.name}")
+        window.geometry("620x270")
+        window.resizable(False, False)
+        window.configure(bg=BG_COLOR)
+        result = {"saved": False}
+        ttk.Label(window, text="Exécutable introuvable", style="Title.TLabel").pack(anchor="w", padx=24, pady=(22, 4))
+        ttk.Label(
+            window,
+            text=f"Le chemin enregistré pour {game.name} n’existe plus. Choisis le nouvel exécutable.",
+            style="Muted.TLabel",
+        ).pack(anchor="w", padx=24, pady=(0, 16))
+        path_var = tk.StringVar(value=game.executable)
+        path_row = ttk.Frame(window, style="App.TFrame")
+        path_row.pack(fill="x", padx=24, pady=6)
+        ttk.Label(path_row, text="Nouveau .exe", style="Field.TLabel", width=16).pack(side="left")
+        ttk.Entry(path_row, textvariable=path_var).pack(side="left", fill="x", expand=True)
+
+        def choose_executable() -> None:
+            initial = game.install_path or Path(game.executable).expanduser().parent
+            selected = filedialog.askopenfilename(
+                parent=window,
+                title="Choisir le véritable exécutable",
+                initialdir=str(initial) if Path(initial).is_dir() else str(Path.home()),
+                filetypes=(("Exécutables Windows", "*.exe"), ("Tous les fichiers", "*")),
+            )
+            if selected:
+                path_var.set(selected)
+
+        ttk.Button(path_row, text="Parcourir", command=choose_executable).pack(side="right", padx=(8, 0))
+        backend_var = tk.StringVar(value=game.backend if game.backend != "auto" else launcher.resolve_backend(game))
+        backend_row = ttk.Frame(window, style="App.TFrame")
+        backend_row.pack(fill="x", padx=24, pady=10)
+        ttk.Label(backend_row, text="Runtime", style="Field.TLabel", width=16).pack(side="left")
+        ttk.Combobox(
+            backend_row,
+            textvariable=backend_var,
+            values=("auto", "proton", "wine", "native"),
+            state="readonly",
+        ).pack(side="left", fill="x", expand=True)
+
+        buttons = ttk.Frame(window, style="App.TFrame")
+        buttons.pack(fill="x", padx=24, pady=(18, 20))
+
+        def save_repair() -> None:
+            executable = Path(path_var.get()).expanduser().resolve()
+            if not executable.is_file():
+                messagebox.showwarning("Exécutable invalide", "Sélectionne un fichier .exe existant.", parent=window)
+                return
+            if executable.suffix.casefold() != ".exe":
+                messagebox.showwarning("Fichier invalide", "Le fichier sélectionné doit être un .exe.", parent=window)
+                return
+            game.executable = str(executable)
+            game.working_directory = str(executable.parent)
+            game.backend = backend_var.get()
+            game.verification = "USER_CONFIRMED"
+            game.status = "ready"
+            launcher.save_game(game)
+            result["saved"] = True
+            window.destroy()
+            self.executable_var.set(game.executable)
+            self.backend_var.set(game.backend)
+            self.status_var.set(f"Exécutable réparé : {game.name}")
+
+        ttk.Button(buttons, text="Annuler", command=window.destroy).pack(side="right")
+        ttk.Button(buttons, text="Enregistrer et lancer", style="Accent.TButton", command=save_repair).pack(side="right", padx=8)
+        self.wait_window(window)
+        return result["saved"]
 
     def _run_process(self, game: launcher.Game, prepared: launcher.PreparedLaunch) -> None:
         try:
